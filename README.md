@@ -20,7 +20,7 @@ In-flight, high-latency but reliable:
 
 ![in-flight.png](https://github.com/johnkerl/pingety-ping/blob/master/screenshots/in-flight.png)
 
-Pinging the onboard router on the same flight -- stellar -- which is why the desktop icon gives a hearty four-bars review to the signal quality, when the reality is more complexP
+Pinging the onboard router on the same flight -- stellar -- which is why the desktop icon gives a hearty four-bars review to the signal quality, when the reality is more complex:
 
 ![onboard-router.png](https://github.com/johnkerl/pingety-ping/blob/master/screenshots/onboard-router.png)
 
