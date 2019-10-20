@@ -17,6 +17,7 @@ Or, you can use `-x` to pipe in the output of the system `ping` command, e.g. `p
 ## Dependencies
 
 ```
+sudo $NAME_OF_YOUR_PACKAGE_MANAGER install ruby
 sudo gem install net-ping
 ```
 
