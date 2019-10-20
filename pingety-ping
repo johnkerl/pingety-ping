@@ -1,5 +1,4 @@
 #!/usr/bin/env ruby
-$stdout.sync = true
 
 # ==============================================================================
 # John Kerl
@@ -12,10 +11,9 @@ require 'getoptlong'
 require 'net/ping' # sudo gem install net-ping
 
 $us = File.basename $0
+$stdout.sync = true
 
 # ----------------------------------------------------------------
-# TODO: Linux vs Mac colors
-
 textdefault="\033[0m"
 red="\033[31;01m"
 green="\033[32;01m"

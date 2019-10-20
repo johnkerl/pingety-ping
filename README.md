@@ -12,7 +12,13 @@ Since ping times vary by several orders of magnitude -- less than 10 ms for good
 
 You can supply a ping target, e.g. `pingety-ping 8.8.8.8`, to use a script-internal (ruby-lib) pinger.
 
-Or, you can use `-i` to pipe in the output of the system `ping` command, e.g. `ping 8.8.8.8 | pingety-ping -i`.
+Or, you can use `-x` to pipe in the output of the system `ping` command, e.g. `ping 8.8.8.8 | pingety-ping -x`.
+
+## Dependencies
+
+```
+sudo gem install net-ping
+```
 
 ## Screenshots
 
