@@ -1,0 +1,169 @@
+#!/usr/bin/env ruby
+$stdout.sync = true
+
+# ==============================================================================
+# John Kerl
+# http://johnkerl.org
+# October 2019
+# ==============================================================================
+
+require 'date'
+require 'getoptlong'
+require 'net/ping' # sudo gem install net-ping
+
+$us = File.basename $0
+
+# ----------------------------------------------------------------
+# TODO: Linux vs Mac colors
+
+textdefault="\033[0m"
+red="\033[31;01m"
+green="\033[32;01m"
+yellow="\033[33;01m"
+bold="\033[1;01m"
+underline="\033[4;01m"
+
+# ================================================================
+def usage(exit_code)
+  stream = (exit_code == 0) ? $stdout : $stderr
+  stream.puts("Usage: #{us} [options] {dest}")
+  stream.puts("Options:")
+  stream.puts("-6  use script-internal IPv6")
+  stream.puts("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | #{us} -i")
+  stream.puts("    in which case dest is not required.")
+  exit(exit_code)
+end
+
+# ----------------------------------------------------------------
+use_ipv6 = false
+parse_external_ping = false
+
+opts = GetoptLong.new(
+  [ '-6', GetoptLong::NO_ARGUMENT ],
+  [ '-x', GetoptLong::NO_ARGUMENT ],
+  [ '-h', '--help', GetoptLong::NO_ARGUMENT ]
+)
+
+begin
+  opts.each do |opt, arg|
+  case opt
+      when '-6'; use_ipv6 = true
+      when '-x'; parse_external_ping = true
+      when '-h'; usage
+      when '--help'; usage
+   end
+    end
+rescue GetoptLong::Error
+    usage
+end
+
+if (!parse_external_ping)
+  dest = ARGV[0]
+end
+
+# ----------------------------------------------------------------
+pinger = Net::Ping::External.new(dest)
+
+count = 0
+ngood = 0
+nbad = 0
+while true
+
+  if parse_external_ping
+    begin
+      line = $stdin.readline
+    rescue EOFError
+      break
+    end
+
+    if line =~ /^PING.*data bytes$/
+      next
+    end
+
+    rtt_ms = nil
+    rtt = nil
+
+    # 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
+    # 16 bytes from 2401:db00:2111:a073:face::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
+    if line =~ /.*bytes from (.*). icmp_seq.*time=(.*) ms/
+      dest = $1
+      rtt_ms = Float($2)
+      rtt = rtt_ms / 1000.0
+    end
+
+  else
+
+    rtt_t1 = Time::now.to_f
+    if use_ipv6
+      ok = pinger.ping6
+    else
+      ok = pinger.ping
+    end
+    rtt_t2 = Time::now.to_f
+    if ok
+      rtt = (rtt_t2 - rtt_t1) # convert to milliseconds
+      rtt_ms = rtt / 1000.0
+    else
+      rtt = nil
+      rtt_ms = nil
+    end
+
+  end
+
+  count += 1
+
+  if rtt.nil?
+    rtt_ms = nil
+    nbad += 1
+    if pinger.exception.nil?
+      bar = red + 'timeout' + textdefault
+    else
+      bar = red + pinger.exception + textdefault
+    end
+  else
+
+    ngood += 1
+
+    rtt_ms = (rtt * 1000).round.to_i
+
+    template =
+      '0' +
+      '.........|' +
+      '10-------|' +
+      '100======|' +
+      '1000#####'
+
+    last = '|'
+    if rtt_ms <= 0
+      index = 0
+    else
+      #index = [40, (Math.log10(rtt_ms) * 10).to_i].min
+      index = (Math.log10(rtt_ms) * 10).to_i
+      if index > 39
+        index = 39
+        last = '+'
+      end
+    end
+
+    # Ruby array[i..j] is inclusive for i and j
+    bar = '[' + green + bold + underline + template[0..index] + textdefault + template[(index)+1..-1] + last + ']'
+
+  end
+
+  dest_fmt = "#{yellow}#{dest}#{textdefault}"
+  if rtt_ms.nil?
+    rtt_ms_fmt = ''
+  else
+    rtt_ms_fmt = sprintf(" %6.1fms", rtt_ms)
+  end
+  printf("%s%s %s [%d/%d OK]\n", dest_fmt, rtt_ms_fmt, bar, ngood, count)
+
+  if !parse_external_ping
+    if rtt.nil?
+      sleep(1.0)
+    elsif rtt < 1.0
+      sleep(1.0 - rtt)
+    end
+  end
+
+end
