@@ -82,7 +82,7 @@ while true
     rtt = nil
 
     # 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
-    # 16 bytes from 2401:db00:2111:a073:face::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
+    # 16 bytes from 7f54:deed:7191:c078:abcd::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
     if line =~ /.*bytes from (.*). icmp_seq.*time=(.*) ms/
       dest = $1
       rtt_ms = Float($2)
@@ -135,7 +135,6 @@ while true
     if rtt_ms <= 0
       index = 0
     else
-      #index = [40, (Math.log10(rtt_ms) * 10).to_i].min
       index = (Math.log10(rtt_ms) * 10).to_i
       if index > 39
         index = 39
