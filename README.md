@@ -8,13 +8,9 @@ Mainly this came out of frustration with in-flight wifi, which is never great an
 
 Since ping times vary by several orders of magnitude -- less than 10 ms for good land fiber, 100 ms or so for VPN, 1000-2000 ms for in-flight -- a logarithmic scale is necessary.
 
-## Using
+## How
 
 You can supply a ping target, e.g. `pingety-ping 8.8.8.8`, to use a script-internal (ruby-lib) pinger.
-
-```
-
-```
 
 Or, you can use `-i` to pipe in the output of the system `ping` command, e.g. `ping 8.8.8.8 | pingety-ping -i`.
 
