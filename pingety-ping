@@ -23,6 +23,8 @@ bold="\033[1;01m"
 underline="\033[4;01m"
 
 bg_green="\033[42;01m"
+bg_yellow="\033[43;01m"
+bg_red="\033[41;01m"
 
 # ================================================================
 def usage(exit_code)
@@ -145,8 +147,15 @@ while true
       end
     end
 
+    bg_color = bg_green
+    if rtt_ms > 1000
+      bg_color = bg_red
+    elsif rtt_ms > 100
+      bg_color = bg_yellow
+    end
+
     # Ruby array[i..j] is inclusive for i and j
-    bar = '[' + fg_white + bg_green + bold + underline + template[0..index] + textdefault + template[(index)+1..-1] + last + ']'
+    bar = '[' + fg_white + bg_color + bold + underline + template[0..index] + textdefault + template[(index)+1..-1] + last + ']'
 
   end
 
