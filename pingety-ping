@@ -38,10 +38,12 @@ end
 # ----------------------------------------------------------------
 use_ipv6 = false
 parse_external_ping = false
+wait_seconds = 1.0
 
 opts = GetoptLong.new(
   [ '-6', GetoptLong::NO_ARGUMENT ],
   [ '-x', GetoptLong::NO_ARGUMENT ],
+  [ '-i', GetoptLong::REQUIRED_ARGUMENT ],
   [ '-h', '--help', GetoptLong::NO_ARGUMENT ]
 )
 
@@ -50,12 +52,18 @@ begin
   case opt
       when '-6'; use_ipv6 = true
       when '-x'; parse_external_ping = true
+      when '-i'; wait_seconds = Float(arg)
       when '-h'; usage
       when '--help'; usage
    end
     end
 rescue GetoptLong::Error
     usage
+end
+
+if ARGV.length != 1
+  $stderr.puts "#{$us}: need ping destination"
+  exit 1
 end
 
 if (!parse_external_ping)
@@ -68,6 +76,7 @@ pinger = Net::Ping::External.new(dest)
 count = 0
 ngood = 0
 nbad = 0
+
 while true
 
   if parse_external_ping
@@ -160,9 +169,9 @@ while true
 
   if !parse_external_ping
     if rtt.nil?
-      sleep(1.0)
-    elsif rtt < 1.0
-      sleep(1.0 - rtt)
+      sleep(wait_seconds)
+    elsif rtt < wait_seconds
+      sleep(wait_seconds - rtt)
     end
   end
 
