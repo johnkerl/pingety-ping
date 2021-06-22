@@ -29,10 +29,10 @@ bg_red="\033[41;01m"
 # ================================================================
 def usage(exit_code)
   stream = (exit_code == 0) ? $stdout : $stderr
-  stream.puts("Usage: #{us} [options] {dest}")
+  stream.puts("Usage: #{$us} [options] {dest}")
   stream.puts("Options:")
   stream.puts("-6  use script-internal IPv6")
-  stream.puts("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | #{us} -i")
+  stream.puts("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | #{$us} -i")
   stream.puts("    in which case dest is not required.")
   exit(exit_code)
 end
@@ -51,19 +51,19 @@ opts = GetoptLong.new(
 
 begin
   opts.each do |opt, arg|
-  case opt
-      when '-6'; use_ipv6 = true
-      when '-x'; parse_external_ping = true
-      when '-i'; wait_seconds = Float(arg)
-      when '-h'; usage
-      when '--help'; usage
+    case opt
+        when '-6'; use_ipv6 = true
+        when '-x'; parse_external_ping = true
+        when '-i'; wait_seconds = Float(arg)
+        when '-h'; usage(0)
+        when '--help'; usage(0)
+     end
    end
-    end
 rescue GetoptLong::Error
-    usage
+    usage(1)
 end
 
-if ARGV.length != 1
+if parse_external_ping == false && ARGV.length != 1
   $stderr.puts "#{$us}: need ping destination"
   exit 1
 end
