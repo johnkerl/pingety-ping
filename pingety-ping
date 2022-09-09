@@ -34,6 +34,8 @@ def usage(exit_code)
   stream.puts("-6  use script-internal IPv6")
   stream.puts("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | #{$us} -i")
   stream.puts("    in which case dest is not required.")
+  stream.puts("-i {wait seconds} Time between pings")
+  stream.puts("-h  Print this message")
   exit(exit_code)
 end
 
@@ -63,23 +65,27 @@ rescue GetoptLong::Error
     usage(1)
 end
 
-if parse_external_ping == false && ARGV.length != 1
+if parse_external_ping == false && ARGV.length < 1
   $stderr.puts "#{$us}: need ping destination"
   exit 1
 end
 
 if (!parse_external_ping)
-  dest = ARGV[0]
+  dests = ARGV
 end
 
 # ----------------------------------------------------------------
-pinger = Net::Ping::External.new(dest)
+pingers = dests.map{|dest| Net::Ping::External.new(dest)}
 
 count = 0
 ngood = 0
 nbad = 0
 
+dindex = 0
 while true
+  dest = dests[dindex]
+  pinger = pingers[dindex]
+  dindex = (dindex + 1) % pingers.length
 
   if parse_external_ping
     begin
@@ -98,7 +104,7 @@ while true
     # 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
     # 16 bytes from 7f54:deed:7191:c078:abcd::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
     if line =~ /.*bytes from (.*). icmp_seq.*time=(.*) ms/
-      dest = $1
+      #dest = $1
       rtt_ms = Float($2)
       rtt = rtt_ms / 1000.0
     end
@@ -174,7 +180,7 @@ while true
   else
     rtt_ms_fmt = sprintf(" %6.1fms", rtt_ms)
   end
-  printf("%s%s %s [%d/%d OK]\n", dest_fmt, rtt_ms_fmt, bar, ngood, count)
+  printf("%-20s%s %s [%d/%d OK]\n", dest_fmt, rtt_ms_fmt, bar, ngood, count)
 
   if !parse_external_ping
     if rtt.nil?
@@ -183,5 +189,4 @@ while true
       sleep(wait_seconds - rtt)
     end
   end
-
 end
