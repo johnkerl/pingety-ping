@@ -10,16 +10,24 @@ Since ping times vary by several orders of magnitude -- less than 10 ms for good
 
 ## How
 
-You can supply a ping target, e.g. `pingety-ping 8.8.8.8`, to use a script-internal (ruby-lib) pinger.
+You can supply one or more ping targets, e.g. `pingety-ping 8.8.8.8`. The script runs the system `ping` command once per probe and draws a bar for each reply.
+
+With several targets, they're pinged round-robin, one per line of output, e.g. `pingety-ping 8.8.8.8 1.1.1.1`.
 
 Or, you can use `-x` to pipe in the output of the system `ping` command, e.g. `ping 8.8.8.8 | pingety-ping -x`.
 
+Options:
+
+* `-6`: Use IPv6 (`ping -6` on Linux, `ping6` on macOS).
+* `-i {seconds}`: Time between pings. The default is 1 second.
+* `-x`: Read lines from an external `ping` instead of pinging; no target is needed.
+* `-h`: Print usage.
+
+The bar is colored by round-trip time: green up to 100 ms, yellow up to 1000 ms, red above that. A failed probe shows as a red `timeout` (or the error message from `ping`). Each line ends with the count of successful probes out of the total, e.g. `[12/14 OK]`.
+
 ## Dependencies
 
-```
-sudo $NAME_OF_YOUR_PACKAGE_MANAGER install ruby
-sudo gem install net-ping
-```
+Python 3 (standard library only) and a system `ping` command. There are no packages to install.
 
 ## Screenshots
 

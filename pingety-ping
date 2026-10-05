@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/usr/bin/env python3
 
 # ==============================================================================
 # John Kerl
@@ -6,187 +6,242 @@
 # October 2019
 # ==============================================================================
 
-require 'date'
-require 'getoptlong'
-require 'net/ping' # sudo gem install net-ping
+import getopt
+import math
+import os
+import re
+import subprocess
+import sys
+import time
 
-$us = File.basename $0
-$stdout.sync = true
+us = os.path.basename(sys.argv[0])
 
 # ----------------------------------------------------------------
-textdefault="\033[0m"
-fg_red="\033[31;01m"
-fg_green="\033[32;01m"
-fg_yellow="\033[33;01m"
-fg_white="\033[37;01m"
-bold="\033[1;01m"
-underline="\033[4;01m"
+textdefault = "\033[0m"
+fg_red = "\033[31;01m"
+fg_green = "\033[32;01m"
+fg_yellow = "\033[33;01m"
+fg_white = "\033[37;01m"
+bold = "\033[1;01m"
+underline = "\033[4;01m"
 
-bg_green="\033[42;01m"
-bg_yellow="\033[43;01m"
-bg_red="\033[41;01m"
+bg_green = "\033[42;01m"
+bg_yellow = "\033[43;01m"
+bg_red = "\033[41;01m"
+
+# 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
+REPLY_TIME_RE = re.compile(r"time[=<]([0-9.]+)\s*ms")
+
+# Lines from external ping that mean a probe failed, as opposed to header,
+# blank and summary lines which are not probes at all.
+#   macOS: Request timeout for icmp_seq 6
+#   Linux: no answer yet for icmp_seq=6
+FAILURE_LINE_RE = re.compile(r"timeout|no answer|unreachable|unknown host|cannot resolve", re.IGNORECASE)
+
 
 # ================================================================
-def usage(exit_code)
-  stream = (exit_code == 0) ? $stdout : $stderr
-  stream.puts("Usage: #{$us} [options] {dest}")
-  stream.puts("Options:")
-  stream.puts("-6  use script-internal IPv6")
-  stream.puts("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | #{$us} -i")
-  stream.puts("    in which case dest is not required.")
-  stream.puts("-i {wait seconds} Time between pings")
-  stream.puts("-h  Print this message")
-  exit(exit_code)
-end
+def usage(exit_code):
+    stream = sys.stdout if exit_code == 0 else sys.stderr
+    print("Usage: %s [options] {dest}" % us, file=stream)
+    print("Options:", file=stream)
+    print("-6  use script-internal IPv6", file=stream)
+    print("-x  Read ping lines from external ping, e.g. ping 8.8.8.8 | %s -x" % us, file=stream)
+    print("    in which case dest is not required.", file=stream)
+    print("-i {wait seconds} Time between pings", file=stream)
+    print("-h  Print this message", file=stream)
+    sys.exit(exit_code)
+
+
+# ================================================================
+class Pinger:
+    """Pings a host by running the system ping command once per call."""
+
+    def __init__(self, host, timeout=5):
+        self.host = host
+        self.timeout = timeout
+        self.exception = None
+
+    def _command(self, ipv6):
+        t = str(self.timeout)
+        if sys.platform == "darwin":
+            if ipv6:
+                # macOS ping6 has no timeout flag; subprocess timeout covers it.
+                return ["ping6", "-c", "1", self.host]
+            return ["ping", "-c", "1", "-t", t, self.host]
+        if ipv6:
+            return ["ping", "-6", "-c", "1", "-W", t, self.host]
+        return ["ping", "-c", "1", "-W", t, self.host]
+
+    def _run(self, ipv6):
+        """Returns the round-trip time in seconds, or None on failure."""
+        self.exception = None
+        t1 = time.time()
+        try:
+            result = subprocess.run(
+                self._command(ipv6),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout + 1,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        except OSError as e:
+            self.exception = str(e)
+            return None
+        t2 = time.time()
+
+        if result.returncode != 0:
+            err = result.stderr.strip()
+            if err:
+                self.exception = err.splitlines()[0]
+            return None
+
+        # Prefer the RTT that ping itself reports: wall time also includes
+        # process startup, which dwarfs sub-millisecond RTTs.
+        m = REPLY_TIME_RE.search(result.stdout)
+        if m:
+            return float(m.group(1)) / 1000.0
+        return t2 - t1
+
+    def ping(self):
+        return self._run(False)
+
+    def ping6(self):
+        return self._run(True)
+
 
 # ----------------------------------------------------------------
-use_ipv6 = false
-parse_external_ping = false
-wait_seconds = 1.0
+def main():
+    use_ipv6 = False
+    parse_external_ping = False
+    wait_seconds = 1.0
 
-opts = GetoptLong.new(
-  [ '-6', GetoptLong::NO_ARGUMENT ],
-  [ '-x', GetoptLong::NO_ARGUMENT ],
-  [ '-i', GetoptLong::REQUIRED_ARGUMENT ],
-  [ '-h', '--help', GetoptLong::NO_ARGUMENT ]
-)
+    try:
+        opts, args = getopt.gnu_getopt(sys.argv[1:], "6xi:h", ["help"])
+        for opt, arg in opts:
+            if opt == "-6":
+                use_ipv6 = True
+            elif opt == "-x":
+                parse_external_ping = True
+            elif opt == "-i":
+                wait_seconds = float(arg)
+            elif opt in ("-h", "--help"):
+                usage(0)
+    except (getopt.GetoptError, ValueError):
+        usage(1)
 
-begin
-  opts.each do |opt, arg|
-    case opt
-        when '-6'; use_ipv6 = true
-        when '-x'; parse_external_ping = true
-        when '-i'; wait_seconds = Float(arg)
-        when '-h'; usage(0)
-        when '--help'; usage(0)
-     end
-   end
-rescue GetoptLong::Error
-    usage(1)
-end
+    if not parse_external_ping and len(args) < 1:
+        print("%s: need ping destination" % us, file=sys.stderr)
+        sys.exit(1)
 
-if parse_external_ping == false && ARGV.length < 1
-  $stderr.puts "#{$us}: need ping destination"
-  exit 1
-end
+    # With -x there are no destinations to ping; the label comes from each
+    # input line instead.
+    if parse_external_ping:
+        dests = [""]
+        pingers = [None]
+    else:
+        dests = args
+        pingers = [Pinger(dest) for dest in dests]
 
-if (!parse_external_ping)
-  dests = ARGV
-end
+    count = 0
+    ngood = 0
+    nbad = 0
 
-# ----------------------------------------------------------------
-pingers = dests.map{|dest| Net::Ping::External.new(dest)}
+    dindex = 0
+    while True:
+        dest = dests[dindex]
+        pinger = pingers[dindex]
+        dindex = (dindex + 1) % len(pingers)
 
-count = 0
-ngood = 0
-nbad = 0
+        if parse_external_ping:
+            line = sys.stdin.readline()
+            if line == "":
+                break
 
-dindex = 0
-while true
-  dest = dests[dindex]
-  pinger = pingers[dindex]
-  dindex = (dindex + 1) % pingers.length
+            rtt = None
 
-  if parse_external_ping
-    begin
-      line = $stdin.readline
-    rescue EOFError
-      break
-    end
+            # 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
+            # 16 bytes from 7f54:deed:7191:c078:abcd::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
+            m = re.search(r"bytes from (.*). icmp_seq.*time=(.*) ms", line)
+            if m:
+                dests[0] = dest = m.group(1)
+                rtt = float(m.group(2)) / 1000.0
+            elif not FAILURE_LINE_RE.search(line):
+                # Header, blank and summary lines are not probes.
+                continue
 
-    if line =~ /^PING.*data bytes$/
-      next
-    end
+        else:
+            t1 = time.time()
+            rtt = pinger.ping6() if use_ipv6 else pinger.ping()
+            elapsed = time.time() - t1
 
-    rtt_ms = nil
-    rtt = nil
+        count += 1
 
-    # 64 bytes from 172.19.248.2: icmp_seq=4 ttl=64 time=2.020 ms
-    # 16 bytes from 7f54:deed:7191:c078:abcd::83:0, icmp_seq=1 hlim=111 time=2187.003 ms
-    if line =~ /.*bytes from (.*). icmp_seq.*time=(.*) ms/
-      #dest = $1
-      rtt_ms = Float($2)
-      rtt = rtt_ms / 1000.0
-    end
+        if rtt is None:
+            rtt_ms = None
+            nbad += 1
+            if pinger is None or pinger.exception is None:
+                bar = fg_red + "timeout" + textdefault
+            else:
+                bar = fg_red + pinger.exception + textdefault
+        else:
+            ngood += 1
 
-  else
+            # Round half away from zero, as Ruby does; Python's round() is banker's.
+            rtt_ms = int(math.floor(rtt * 1000 + 0.5))
 
-    rtt_t1 = Time::now.to_f
-    if use_ipv6
-      ok = pinger.ping6
-    else
-      ok = pinger.ping
-    end
-    rtt_t2 = Time::now.to_f
-    if ok
-      rtt = (rtt_t2 - rtt_t1) # convert to milliseconds
-      rtt_ms = rtt / 1000.0
-    else
-      rtt = nil
-      rtt_ms = nil
-    end
+            template = (
+                "0"
+                + ".........|"
+                + "10-------|"
+                + "100======|"
+                + "1000#####"
+            )
 
-  end
+            last = "|"
+            if rtt_ms <= 0:
+                index = 0
+            else:
+                index = int(math.log10(rtt_ms) * 10)
+                if index > 39:
+                    index = 39
+                    last = "+"
 
-  count += 1
+            bg_color = bg_green
+            if rtt_ms > 1000:
+                bg_color = bg_red
+            elif rtt_ms > 100:
+                bg_color = bg_yellow
 
-  if rtt.nil?
-    rtt_ms = nil
-    nbad += 1
-    if pinger.exception.nil?
-      bar = fg_red + 'timeout' + textdefault
-    else
-      bar = fg_red + pinger.exception + textdefault
-    end
-  else
+            # Python slices are half-open, so [:index+1] matches Ruby's [0..index].
+            bar = (
+                "["
+                + fg_white + bg_color + bold + underline
+                + template[: index + 1]
+                + textdefault
+                + template[index + 1:]
+                + last
+                + "]"
+            )
 
-    ngood += 1
+        # Pad by visible width: the color escapes must not count toward the 20.
+        dest_fmt = "%s%s%s%s" % (fg_yellow, dest, textdefault, " " * max(0, 20 - len(dest)))
+        if rtt_ms is None:
+            rtt_ms_fmt = ""
+        else:
+            rtt_ms_fmt = " %6.1fms" % rtt_ms
+        print("%s%s %s [%d/%d OK]" % (dest_fmt, rtt_ms_fmt, bar, ngood, count), flush=True)
 
-    rtt_ms = (rtt * 1000).round.to_i
+        if not parse_external_ping:
+            if rtt is None:
+                time.sleep(wait_seconds)
+            elif elapsed < wait_seconds:
+                time.sleep(wait_seconds - elapsed)
 
-    template =
-      '0' +
-      '.........|' +
-      '10-------|' +
-      '100======|' +
-      '1000#####'
 
-    last = '|'
-    if rtt_ms <= 0
-      index = 0
-    else
-      index = (Math.log10(rtt_ms) * 10).to_i
-      if index > 39
-        index = 39
-        last = '+'
-      end
-    end
-
-    bg_color = bg_green
-    if rtt_ms > 1000
-      bg_color = bg_red
-    elsif rtt_ms > 100
-      bg_color = bg_yellow
-    end
-
-    # Ruby array[i..j] is inclusive for i and j
-    bar = '[' + fg_white + bg_color + bold + underline + template[0..index] + textdefault + template[(index)+1..-1] + last + ']'
-
-  end
-
-  dest_fmt = "#{fg_yellow}#{dest}#{textdefault}"
-  if rtt_ms.nil?
-    rtt_ms_fmt = ''
-  else
-    rtt_ms_fmt = sprintf(" %6.1fms", rtt_ms)
-  end
-  printf("%-20s%s %s [%d/%d OK]\n", dest_fmt, rtt_ms_fmt, bar, ngood, count)
-
-  if !parse_external_ping
-    if rtt.nil?
-      sleep(wait_seconds)
-    elsif rtt < wait_seconds
-      sleep(wait_seconds - rtt)
-    end
-  end
-end
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
